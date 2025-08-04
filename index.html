@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>VEX Goal Trainer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        .action-button { transition: all 0.1s ease-in-out; }
+        .action-button:active { transform: scale(0.95); }
+        .goal-bar-container {
+            background-color: #e2e8f0;
+            border-radius: 0.375rem;
+            padding: 0.5rem;
+            box-shadow: inset 0 2px 4px 0 rgba(0,0,0,0.05);
+            display: flex;
+            justify-content: center;
+        }
+        .goal-bar {
+            display: flex;
+            height: 3rem;
+            border-radius: 0.25rem;
+            overflow: hidden;
+        }
+        .goal-slot {
+            height: 3rem;
+            flex: 1;
+        }
+        .blocks-red, .slot-red { background-color: #ef4444; }
+        .blocks-blue, .slot-blue { background-color: #3b82f6; }
+        .blocks-empty, .slot-empty { background-color: #cbd5e1; }
+        .control-zone {
+            border-top: 3px dashed #4b5563;
+            border-bottom: 3px dashed #4b5563;
+        }
+        #timerResultOverlay, #countdownOverlay { transition: opacity 0.3s ease-in-out; }
+        .mode-toggle button.active {
+            background-color: #4f46e5;
+            color: white;
+        }
+    </style>
+</head>
+<body class="text-slate-800 min-h-screen antialiased flex flex-col items-center justify-center p-4">
+
+    <!-- Timer Display Bar (Outside Main Container) -->
+    <div id="timerBar" class="w-full max-w-lg mx-auto bg-slate-800 text-white flex items-center justify-between px-4 py-2 rounded-t-lg mb-2" style="display: none;">
+        <div class="text-lg font-bold">Time: <span id="timerDisplay">30</span></div>
+        <div class="text-lg font-bold">Correct: <span id="timerScore">0</span></div>
+    </div>
+
+    <div class="w-full max-w-lg mx-auto">
+        <div class="bg-white shadow-xl rounded-lg p-6 relative">
+            <!-- Countdown Overlay -->
+            <div id="countdownOverlay" class="absolute inset-0 bg-white bg-opacity-95 flex items-center justify-center rounded-lg z-30" style="display: none;">
+                <div id="countdownDisplay" class="text-8xl font-bold text-slate-700">3</div>
+            </div>
+            
+            <!-- Timer Result Modal -->
+            <div id="timerResultOverlay" class="absolute inset-0 bg-black bg-opacity-70 flex-col items-center justify-center rounded-lg opacity-0 pointer-events-none z-20" style="display: none;">
+                <div class="bg-white text-slate-800 p-6 rounded-lg shadow-2xl text-center relative max-w-sm">
+                    <button id="closeTimerResultBtn" class="action-button absolute top-2 right-2 text-slate-400 hover:text-slate-600 p-2">
+                        <i class="fas fa-times fa-lg"></i>
+                    </button>
+                    <div class="text-2xl font-bold">Time's Up!</div>
+                    <div class="mt-2 text-4xl">You got <span id="finalTimerScore" class="font-bold text-green-500">0</span> correct!</div>
+                    <div class="mt-4 pt-4 border-t w-full">
+                        <h4 class="text-sm font-bold text-slate-600 mb-2">Performance Analysis</h4>
+                        <div id="analysisResults" class="text-sm text-slate-500 text-left space-y-1">
+                            <!-- Analysis will be injected here -->
+                        </div>
+                    </div>
+                    <div class="flex justify-center mt-4">
+                        <button id="playAgainBtn" class="action-button bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-2 px-6 rounded-lg">Play Again</button>
+                    </div>
+                </div>
+            </div>
+
+            <header class="text-center mb-4">
+                <div class="mode-toggle mb-2 flex justify-center bg-slate-200 rounded-lg p-1">
+                    <button id="upperModeBtn" class="flex-1 py-1 px-3 text-sm font-semibold rounded-md">Upper Goal</button>
+                    <button id="lowerModeBtn" class="flex-1 py-1 px-3 text-sm font-semibold rounded-md">Lower Goal</button>
+                    <button id="longModeBtn" class="flex-1 py-1 px-3 text-sm font-semibold rounded-md">Long Goal</button>
+                </div>
+                <h1 id="mainTitle" class="text-2xl font-bold text-slate-900">Goal Trainer</h1>
+                <p class="text-sm text-slate-500 mt-1">Estimate the point difference for this goal.</p>
+            </header>
+
+            <div id="mainContent">
+                <!-- Goal Display -->
+                <div class="mb-4">
+                    <div class="goal-bar-container">
+                        <div id="goalBar" class="goal-bar">
+                            <!-- Blocks will be rendered here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Input Section -->
+                <div class="mb-4">
+                    <label for="guessInput" class="block text-center font-medium text-slate-700 mb-2">Enter Lead (+Blue / -Red)</label>
+                    <input type="number" id="guessInput" placeholder="e.g., -12 for Red lead" class="w-full text-center text-lg p-2 border-2 border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+
+                <!-- Controls -->
+                <div class="grid grid-cols-2 gap-3">
+                    <button id="newScenarioBtn" class="action-button w-full bg-slate-600 hover:bg-slate-700 text-white font-bold py-3 rounded-lg">New Scenario</button>
+                    <button id="submitBtn" class="action-button w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg">Submit Guess</button>
+                </div>
+                <button id="startTimerBtn" class="action-button w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg mt-3">
+                    <i class="fas fa-stopwatch"></i> Start 30s Timer Mode
+                </button>
+
+
+                <!-- Result Section -->
+                <div id="resultSection" class="mt-4 pt-4 border-t border-slate-200 text-center hidden">
+                    <div id="feedback" class="text-xl font-bold mb-2"></div>
+                    <div class="text-sm text-slate-600">
+                        <p>Correct Answer: <span id="correctAnswer" class="font-bold"></span></p>
+                        <p id="scoreBreakdown" class="mt-1"></p>
+                    </div>
+                </div>
+                
+                <!-- Stats Section -->
+                <div id="statsSection" class="mt-4 pt-4 border-t border-slate-200 hidden">
+                    <h3 class="text-center font-bold text-slate-700 mb-2">Your Statistics</h3>
+                    <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm text-slate-600">
+                        <span class="font-medium">Attempts:</span><span id="statsAttempts" class="text-right font-mono">0</span>
+                        <span class="font-medium">Correct:</span><span id="statsCorrect" class="text-right font-mono">0</span>
+                        <span class="font-medium">Accuracy:</span><span id="statsAccuracy" class="text-right font-mono">0%</span>
+                        <span class="font-medium">Avg. Error:</span><span id="statsAvgError" class="text-right font-mono">0.0</span>
+                        <span class="font-medium">Avg. Time (fast):</span><span id="statsAvgTime" class="text-right font-mono">0.0s</span>
+                    </div>
+                    <div class="mt-3 pt-2 border-t border-slate-100">
+                        <canvas id="statsChart"></canvas>
+                    </div>
+                    <button id="resetStatsBtn" class="action-button text-xs text-slate-500 hover:text-red-600 mt-3 w-full flex items-center justify-center gap-1">
+                        <i class="fas fa-trash-alt"></i> Reset Stats
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const BLOCK_POINTS = 3;
+        const GOAL_SETTINGS = {
+            upper: { capacity: 7, controlBonus: 8, isLong: false, name: 'Upper Center Goal' },
+            lower: { capacity: 7, controlBonus: 6, isLong: false, name: 'Lower Center Goal' },
+            long: { capacity: 15, controlBonus: 10, isLong: true, czStart: 6, czEnd: 8, name: 'Long Goal' }
+        };
+
+        let currentBlocks = []; // For long goal, array of 'red', 'blue', 'empty'
+        let currentRedBlocks = 0; // For center goals
+        let currentBlueBlocks = 0; // For center goals
+        let isTimerMode = false;
+        let timerInterval;
+        let timerScore = 0;
+        let timerHistory = [];
+        let scenarioStartTime = 0;
+        let statsChart = null;
+        let currentMode = 'upper';
+
+        let stats = {
+            attempts: 0,
+            correct: 0,
+            totalError: 0,
+            solveTimes: [],
+            analysis: { byTotal: {} }
+        };
+
+        const goalBar = document.getElementById('goalBar');
+        const guessInput = document.getElementById('guessInput');
+        const newScenarioBtn = document.getElementById('newScenarioBtn');
+        const submitBtn = document.getElementById('submitBtn');
+        const startTimerBtn = document.getElementById('startTimerBtn');
+        const resultSection = document.getElementById('resultSection');
+        const feedbackEl = document.getElementById('feedback');
+        const correctAnswerEl = document.getElementById('correctAnswer');
+        const scoreBreakdownEl = document.getElementById('scoreBreakdown');
+        const statsSection = document.getElementById('statsSection');
+        const statsAttempts = document.getElementById('statsAttempts');
+        const statsCorrect = document.getElementById('statsCorrect');
+        const statsAccuracy = document.getElementById('statsAccuracy');
+        const statsAvgError = document.getElementById('statsAvgError');
+        const statsAvgTime = document.getElementById('statsAvgTime');
+        const resetStatsBtn = document.getElementById('resetStatsBtn');
+        const timerBar = document.getElementById('timerBar');
+        const timerDisplay = document.getElementById('timerDisplay');
+        const timerScoreEl = document.getElementById('timerScore');
+        const timerResultOverlay = document.getElementById('timerResultOverlay');
+        const finalTimerScore = document.getElementById('finalTimerScore');
+        const playAgainBtn = document.getElementById('playAgainBtn');
+        const closeTimerResultBtn = document.getElementById('closeTimerResultBtn');
+        const mainContent = document.getElementById('mainContent');
+        const countdownOverlay = document.getElementById('countdownOverlay');
+        const countdownDisplay = document.getElementById('countdownDisplay');
+        const analysisResultsEl = document.getElementById('analysisResults');
+        const upperModeBtn = document.getElementById('upperModeBtn');
+        const lowerModeBtn = document.getElementById('lowerModeBtn');
+        const longModeBtn = document.getElementById('longModeBtn');
+        const mainTitle = document.getElementById('mainTitle');
+
+        function loadStats() {
+            const savedStats = localStorage.getItem('goalTrainerStatsUnified');
+            if (savedStats) {
+                stats = JSON.parse(savedStats);
+                if (!stats.analysis) stats.analysis = { byTotal: {} };
+                if (!stats.solveTimes) stats.solveTimes = [];
+            }
+            updateStatsDisplay();
+        }
+
+        function saveStats() {
+            localStorage.setItem('goalTrainerStatsUnified', JSON.stringify(stats));
+        }
+        
+        function updateStatsDisplay() {
+            statsAttempts.textContent = stats.attempts;
+            statsCorrect.textContent = stats.correct;
+            const accuracy = stats.attempts > 0 ? ((stats.correct / stats.attempts) * 100).toFixed(1) : 0;
+            statsAccuracy.textContent = `${accuracy}%`;
+            const avgError = stats.attempts > 0 ? (stats.totalError / stats.attempts).toFixed(1) : 0;
+            statsAvgError.textContent = avgError;
+            const validTimes = stats.solveTimes.filter(t => t <= 10000);
+            const avgTime = validTimes.length > 0 ? (validTimes.reduce((a, b) => a + b, 0) / validTimes.length / 1000).toFixed(1) : 0;
+            statsAvgTime.textContent = `${avgTime}s`;
+
+            if (stats.attempts > 0) {
+                renderStatsChart();
+                statsSection.classList.remove('hidden');
+            }
+        }
+
+        function generateScenario() {
+            const { capacity, isLong } = GOAL_SETTINGS[currentMode];
+            const r1 = Math.floor(Math.random() * (capacity + 1));
+            const r2 = Math.floor(Math.random() * (capacity + 1));
+            const totalBlocks = Math.max(r1, r2);
+
+            currentRedBlocks = Math.floor(Math.random() * (totalBlocks + 1));
+            currentBlueBlocks = totalBlocks - currentRedBlocks;
+
+            if (isLong) {
+                currentBlocks = Array(capacity).fill('empty');
+                const emptySlots = capacity - totalBlocks;
+                const leftGap = Math.floor(Math.random() * (emptySlots + 1));
+                const middleGap = Math.floor(Math.random() * (emptySlots - leftGap + 1));
+                
+                let currentIndex = 0;
+                for(let i=0; i < leftGap; i++) currentIndex++;
+                for(let i=0; i < currentBlueBlocks; i++) currentBlocks[currentIndex++] = 'blue';
+                for(let i=0; i < middleGap; i++) currentIndex++;
+                for(let i=0; i < currentRedBlocks; i++) currentBlocks[currentIndex++] = 'red';
+            }
+
+            renderGoal();
+            resetUI();
+            scenarioStartTime = Date.now();
+        }
+
+        function renderGoal() {
+            goalBar.innerHTML = '';
+            const { capacity, isLong, czStart, czEnd } = GOAL_SETTINGS[currentMode];
+            
+            if (isLong) {
+                goalBar.style.gap = '2px';
+                goalBar.style.width = '100%';
+                currentBlocks.forEach((slot, index) => {
+                    const slotDiv = document.createElement('div');
+                    slotDiv.className = `goal-slot slot-${slot}`;
+                    if (index >= czStart && index <= czEnd) {
+                        slotDiv.classList.add('control-zone');
+                    }
+                    goalBar.appendChild(slotDiv);
+                });
+            } else {
+                goalBar.style.gap = '0px';
+                goalBar.style.width = '60%'; // Make center goals smaller
+                const redWidth = (currentRedBlocks / capacity) * 100;
+                const blueWidth = (currentBlueBlocks / capacity) * 100;
+                const emptyWidth = ((capacity - currentRedBlocks - currentBlueBlocks) / capacity) * 100;
+                if (blueWidth > 0) goalBar.innerHTML += `<div class="blocks-blue" style="width: ${blueWidth}%;"></div>`;
+                if (emptyWidth > 0) goalBar.innerHTML += `<div class="blocks-empty" style="width: ${emptyWidth}%;"></div>`;
+                if (redWidth > 0) goalBar.innerHTML += `<div class="blocks-red" style="width: ${redWidth}%;"></div>`;
+            }
+        }
+        
+        function resetUI() {
+            resultSection.classList.add('hidden');
+            guessInput.value = '';
+            guessInput.disabled = false;
+            guessInput.focus();
+        }
+
+        function calculateDifference() {
+            const { controlBonus, isLong, czStart, czEnd } = GOAL_SETTINGS[currentMode];
+            let redScore = 0, blueScore = 0;
+            let redBlockCount = 0, blueBlockCount = 0;
+            
+            if (isLong) {
+                redBlockCount = currentBlocks.filter(s => s === 'red').length;
+                blueBlockCount = currentBlocks.filter(s => s === 'blue').length;
+            } else {
+                redBlockCount = currentRedBlocks;
+                blueBlockCount = currentBlueBlocks;
+            }
+
+            redScore = redBlockCount * BLOCK_POINTS;
+            blueScore = blueBlockCount * BLOCK_POINTS;
+            
+            let redInCz = 0, blueInCz = 0;
+            if (isLong) {
+                for (let i = czStart; i <= czEnd; i++) {
+                    if (currentBlocks[i] === 'red') redInCz++;
+                    if (currentBlocks[i] === 'blue') blueInCz++;
+                }
+            } else {
+                redInCz = redBlockCount;
+                blueInCz = blueBlockCount;
+            }
+            
+            if (redInCz > blueInCz) redScore += controlBonus;
+            else if (blueInCz > redInCz) blueScore += controlBonus;
+
+            return { redScore, blueScore, difference: redScore - blueScore, redBlockCount, blueBlockCount };
+        }
+
+        function updateStatsWithNewData(data) {
+            stats.attempts++;
+            stats.totalError += data.error;
+            if (data.error === 0) stats.correct++;
+            if (data.solveTime) stats.solveTimes.push(data.solveTime);
+            
+            const totalBlocksKey = data.totalBlocks.toString();
+            if (!stats.analysis.byTotal[totalBlocksKey]) stats.analysis.byTotal[totalBlocksKey] = { sumError: 0, count: 0, solveTimes: [] };
+            stats.analysis.byTotal[totalBlocksKey].sumError += data.error;
+            stats.analysis.byTotal[totalBlocksKey].count++;
+            if (data.solveTime) stats.analysis.byTotal[totalBlocksKey].solveTimes.push(data.solveTime);
+        }
+
+        function handleSubmit() {
+            if (resultSection.classList.contains('hidden') && !isTimerMode) {
+                const solveTime = Date.now() - scenarioStartTime;
+                const userGuess = parseInt(guessInput.value, 10) || 0;
+                const { redScore, blueScore, difference, redBlockCount, blueBlockCount } = calculateDifference();
+                const correctGuessValue = -difference;
+                const error = Math.abs(userGuess - correctGuessValue);
+
+                updateStatsWithNewData({
+                    error: error,
+                    solveTime: solveTime,
+                    totalBlocks: redBlockCount + blueBlockCount
+                });
+                
+                let correctString = '';
+                if (difference === 0) correctString = 'Tie (0 point lead)';
+                else if (difference > 0) correctString = `Red leads by ${difference} points`;
+                else correctString = `Blue leads by ${Math.abs(difference)} points`;
+                correctAnswerEl.textContent = correctString;
+                const controlBonus = GOAL_SETTINGS[currentMode].controlBonus;
+                const redBonusText = (redScore > redBlockCount * BLOCK_POINTS) ? `+ ${controlBonus} bonus` : '';
+                const blueBonusText = (blueScore > blueBlockCount * BLOCK_POINTS) ? `+ ${controlBonus} bonus` : '';
+                scoreBreakdownEl.innerHTML = `
+                    <span class="text-red-600">Red: ${redBlockCount} blocks (${redBlockCount*BLOCK_POINTS} pts) ${redBonusText} = <strong>${redScore}</strong></span><br>
+                    <span class="text-blue-600">Blue: ${blueBlockCount} blocks (${blueBlockCount*BLOCK_POINTS} pts) ${blueBonusText} = <strong>${blueScore}</strong></span>
+                `;
+                
+                if (error === 0) {
+                    feedbackEl.textContent = '🎯 Perfect!';
+                    feedbackEl.className = 'text-xl font-bold mb-2 text-green-600';
+                } else {
+                    feedbackEl.textContent = '🤔 Not Quite!';
+                    feedbackEl.className = 'text-xl font-bold mb-2 text-amber-600';
+                }
+                
+                saveStats();
+                updateStatsDisplay();
+                resultSection.classList.remove('hidden');
+                guessInput.disabled = true;
+            }
+        }
+        
+        function startTimerMode() {
+            isTimerMode = true;
+            timerScore = 0;
+            timerHistory = [];
+            let countdown = 3;
+            countdownDisplay.textContent = countdown;
+            countdownOverlay.style.display = 'flex';
+            mainContent.querySelectorAll('button').forEach(b => b.disabled = true);
+            guessInput.disabled = true;
+
+            const countdownInterval = setInterval(() => {
+                countdown--;
+                countdownDisplay.textContent = countdown > 0 ? countdown : 'Go!';
+                if (countdown < 0) {
+                    clearInterval(countdownInterval);
+                    countdownOverlay.style.display = 'none';
+                    beginTimedChallenge();
+                }
+            }, 1000);
+        }
+
+        function beginTimedChallenge() {
+            let timeLeft = 30;
+            timerDisplay.textContent = timeLeft;
+            timerScoreEl.textContent = timerScore;
+            timerBar.style.display = 'flex';
+            
+            timerResultOverlay.style.display = 'none';
+            timerResultOverlay.classList.add('opacity-0', 'pointer-events-none');
+            generateScenario();
+
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                timerDisplay.textContent = timeLeft;
+                if (timeLeft <= 0) {
+                    endTimerMode();
+                }
+            }, 1000);
+        }
+
+        function endTimerMode() {
+            clearInterval(timerInterval);
+            isTimerMode = false;
+            guessInput.disabled = true;
+            
+            const analysisData = { byTotal: {} };
+            timerHistory.forEach(h => {
+                const totalKey = h.totalBlocks.toString();
+                if (!analysisData.byTotal[totalKey]) analysisData.byTotal[totalKey] = { sumError: 0, count: 0 };
+                analysisData.byTotal[totalKey].sumError += h.error;
+                analysisData.byTotal[totalKey].count++;
+            });
+            analysisResultsEl.innerHTML = analyzePerformance(analysisData);
+
+            finalTimerScore.textContent = timerScore;
+            timerBar.style.display = 'none';
+            timerResultOverlay.style.display = 'flex';
+            timerResultOverlay.classList.remove('opacity-0', 'pointer-events-none');
+        }
+
+        function handleTimerSubmit() {
+            const userGuess = parseInt(guessInput.value, 10) || 0;
+            const { difference, redBlockCount, blueBlockCount } = calculateDifference();
+            const correctGuessValue = -difference;
+            const error = Math.abs(userGuess - correctGuessValue);
+
+            timerHistory.push({
+                error: error,
+                totalBlocks: redBlockCount + blueBlockCount,
+            });
+
+            if (error === 0) {
+                timerScore++;
+                timerScoreEl.textContent = timerScore;
+            }
+            generateScenario();
+        }
+
+        function analyzePerformance(analysisData) {
+            if (Object.keys(analysisData.byTotal).length === 0) {
+                return "<span>Play a round to see your analysis.</span>";
+            }
+            const findWeakest = (analysisGroup) => {
+                let weakestKey = null;
+                let maxAvgError = -1;
+                for (const key in analysisGroup) {
+                    if (analysisGroup[key].count >= 2) {
+                        const avgError = analysisGroup[key].sumError / analysisGroup[key].count;
+                        if (avgError > maxAvgError) {
+                            maxAvgError = avgError;
+                            weakestKey = key;
+                        }
+                    }
+                }
+                return weakestKey;
+            };
+            
+            const weakestTotal = findWeakest(analysisData.byTotal);
+            let analysisHTML = '<span>You struggled most with:</span>';
+            if (weakestTotal) {
+                analysisHTML += `<div class="font-bold text-indigo-600">Goals with ${weakestTotal} total blocks.</div>`;
+            } else {
+                return "<span>No clear weaknesses found yet. Keep practicing!</span>";
+            }
+            return analysisHTML;
+        }
+
+        function renderStatsChart() {
+            const ctx = document.getElementById('statsChart').getContext('2d');
+            const analysis = stats.analysis.byTotal;
+
+            const labels = Object.keys(analysis).map(Number).sort((a,b) => a-b);
+            
+            const timeData = labels.map(label => {
+                const key = label.toString();
+                const categoryTimes = analysis[key].solveTimes || [];
+                const validTimes = categoryTimes.filter(t => t <= 10000);
+                if (validTimes.length === 0) return 0;
+                const avgTime = validTimes.reduce((a, b) => a + b, 0) / validTimes.length;
+                return (avgTime / 1000).toFixed(1);
+            });
+
+            const frequencyData = labels.map(label => {
+                const key = label.toString();
+                return analysis[key].count;
+            });
+
+            if (statsChart) {
+                statsChart.destroy();
+            }
+
+            statsChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels.map(l => `${l} Blocks`),
+                    datasets: [
+                        {
+                            label: 'Average Time (s)',
+                            data: timeData,
+                            backgroundColor: 'rgba(129, 140, 248, 0.6)',
+                            borderColor: 'rgba(129, 140, 248, 1)',
+                            borderWidth: 1,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'Frequency',
+                            data: frequencyData,
+                            backgroundColor: 'rgba(209, 213, 219, 0.6)',
+                            borderColor: 'rgba(107, 114, 128, 1)',
+                            type: 'line',
+                            yAxisID: 'y1',
+                            tension: 0.1
+                        }
+                    ]
+                },
+                options: {
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            position: 'left',
+                            title: { display: true, text: 'Avg. Solve Time (s)' }
+                        },
+                        y1: {
+                            beginAtZero: true,
+                            position: 'right',
+                            title: { display: true, text: 'Frequency' },
+                            grid: {
+                                drawOnChartArea: false
+                            }
+                        },
+                        x: {
+                            title: { display: true, text: 'Total Blocks in Goal' }
+                        }
+                    },
+                    plugins: {
+                        title: { display: true, text: 'Performance & Scenario Frequency' }
+                    }
+                }
+            });
+        }
+        
+        function setMode(mode) {
+            currentMode = mode;
+            upperModeBtn.classList.toggle('active', mode === 'upper');
+            lowerModeBtn.classList.toggle('active', mode === 'lower');
+            longModeBtn.classList.toggle('active', mode === 'long');
+            mainTitle.textContent = `${GOAL_SETTINGS[mode].name} Trainer`;
+            generateScenario();
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                if (isTimerMode) {
+                    handleTimerSubmit();
+                } else if (resultSection.classList.contains('hidden')) {
+                    handleSubmit();
+                } else {
+                    generateScenario();
+                }
+            }
+        });
+
+        newScenarioBtn.addEventListener('click', generateScenario);
+        submitBtn.addEventListener('click', handleSubmit);
+        startTimerBtn.addEventListener('click', startTimerMode);
+        
+        playAgainBtn.addEventListener('click', () => {
+             timerResultOverlay.style.display = 'none';
+             timerResultOverlay.classList.add('opacity-0', 'pointer-events-none');
+             startTimerMode();
+        });
+        
+        closeTimerResultBtn.addEventListener('click', () => {
+            timerResultOverlay.style.display = 'none';
+            timerResultOverlay.classList.add('opacity-0', 'pointer-events-none');
+            mainContent.querySelectorAll('button').forEach(b => b.disabled = false);
+            generateScenario();
+        });
+
+        resetStatsBtn.addEventListener('click', () => {
+             if (confirm("Are you sure you want to reset your stats? This cannot be undone.")) {
+                stats = { attempts: 0, correct: 0, totalError: 0, solveTimes: [], analysis: { byTotal: {} } };
+                saveStats();
+                updateStatsDisplay();
+                if (statsChart) statsChart.destroy();
+                statsSection.classList.add('hidden');
+            }
+        });
+        
+        upperModeBtn.addEventListener('click', () => setMode('upper'));
+        lowerModeBtn.addEventListener('click', () => setMode('lower'));
+        longModeBtn.addEventListener('click', () => setMode('long'));
+
+        // Initial load
+        loadStats();
+        setMode('upper');
+        generateScenario();
+    </script>
+</body>
+</html>
