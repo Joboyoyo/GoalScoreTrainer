@@ -65,6 +65,12 @@
                     </button>
                     <div class="text-2xl font-bold">Time's Up!</div>
                     <div class="mt-2 text-4xl">You got <span id="finalTimerScore" class="font-bold text-green-500">0</span> correct!</div>
+                    <div class="mt-4 pt-4 border-t w-full">
+                        <h4 class="text-sm font-bold text-slate-600 mb-2">Session Stats</h4>
+                        <div id="analysisResults" class="text-lg text-slate-500 text-center">
+                            <!-- Analysis will be injected here -->
+                        </div>
+                    </div>
                     <div class="flex justify-center mt-4">
                         <button id="playAgainBtn" class="action-button bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-2 px-6 rounded-lg">Play Again</button>
                     </div>
@@ -121,6 +127,9 @@
                     <h3 class="text-center font-bold text-slate-700 mb-2">Today's Statistics (<span id="statsModeTitle"></span>)</h3>
                     <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm text-slate-600">
                         <span class="font-medium">Attempts:</span><span id="statsAttempts" class="text-right font-mono">0</span>
+                        <span class="font-medium">Correct:</span><span id="statsCorrect" class="text-right font-mono">0</span>
+                        <span class="font-medium">Accuracy:</span><span id="statsAccuracy" class="text-right font-mono">0%</span>
+                        <span class="font-medium">Avg. Error:</span><span id="statsAvgError" class="text-right font-mono">0.0</span>
                         <span class="font-medium">Avg. Time (fast):</span><span id="statsAvgTime" class="text-right font-mono">0.0s</span>
                     </div>
                     <div class="mt-3 pt-2 border-t border-slate-100">
@@ -166,6 +175,9 @@
             statsSection: document.getElementById('statsSection'),
             statsModeTitle: document.getElementById('statsModeTitle'),
             statsAttempts: document.getElementById('statsAttempts'),
+            statsCorrect: document.getElementById('statsCorrect'),
+            statsAccuracy: document.getElementById('statsAccuracy'),
+            statsAvgError: document.getElementById('statsAvgError'),
             statsAvgTime: document.getElementById('statsAvgTime'),
             resetStatsBtn: document.getElementById('resetStatsBtn'),
             timerBar: document.getElementById('timerBar'),
@@ -190,7 +202,7 @@
         };
 
         function createEmptyStatsObject() {
-            return { attempts: 0, solveTimes: [], analysis: { byTotal: {} } };
+            return { attempts: 0, correct: 0, totalError: 0, solveTimes: [], analysis: { byTotal: {} } };
         }
 
         function getTodayKey() {
@@ -220,6 +232,11 @@
             const currentStats = dailyStats[todayKey][currentMode];
             elements.statsModeTitle.textContent = GOAL_SETTINGS[currentMode].name;
             elements.statsAttempts.textContent = currentStats.attempts;
+            elements.statsCorrect.textContent = currentStats.correct;
+            const accuracy = currentStats.attempts > 0 ? ((currentStats.correct / currentStats.attempts) * 100).toFixed(1) : 0;
+            elements.statsAccuracy.textContent = `${accuracy}%`;
+            const avgError = currentStats.attempts > 0 ? (currentStats.totalError / currentStats.attempts).toFixed(1) : 0;
+            elements.statsAvgError.textContent = avgError;
             const validTimes = currentStats.solveTimes.filter(t => t <= 10000);
             const avgTime = validTimes.length > 0 ? (validTimes.reduce((a, b) => a + b, 0) / validTimes.length / 1000).toFixed(1) : 0;
             elements.statsAvgTime.textContent = `${avgTime}s`;
@@ -315,7 +332,10 @@
 
         function updateStatsWithNewData(statsObject, data) {
             statsObject.attempts++;
+            statsObject.totalError += data.error;
+            if (data.error === 0) statsObject.correct++;
             if (data.solveTime) statsObject.solveTimes.push(data.solveTime);
+            
             const totalBlocksKey = data.totalBlocks.toString();
             if (!statsObject.analysis.byTotal[totalBlocksKey]) statsObject.analysis.byTotal[totalBlocksKey] = { count: 0, solveTimes: [] };
             statsObject.analysis.byTotal[totalBlocksKey].count++;
@@ -520,7 +540,7 @@
             if (historyChart) historyChart.destroy();
             const ctx = document.getElementById('historyChart').getContext('2d');
             
-            const labels = sortedDates.map(date => new Date(date + 'T00:00:00').toLocaleDateString());
+            const labels = sortedDates.map(date => new Date(date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }));
             const upperData = [], lowerData = [], longData = [], frequencyData = [];
 
             sortedDates.forEach(date => {
@@ -543,9 +563,9 @@
                 data: {
                     labels: labels.reverse(),
                     datasets: [
-                        { type: 'line', label: 'Upper Goal Avg Time', data: upperData.reverse(), borderColor: 'rgba(239, 68, 68, 1)', yAxisID: 'y', tension: 0.1 },
-                        { type: 'line', label: 'Lower Goal Avg Time', data: lowerData.reverse(), borderColor: 'rgba(59, 130, 246, 1)', yAxisID: 'y', tension: 0.1 },
-                        { type: 'line', label: 'Long Goal Avg Time', data: longData.reverse(), borderColor: 'rgba(245, 158, 11, 1)', yAxisID: 'y', tension: 0.1 },
+                        { type: 'line', label: 'Upper Goal Avg Time', data: upperData.reverse(), borderColor: 'rgba(239, 68, 68, 1)', yAxisID: 'y', tension: 0.1, fill: false },
+                        { type: 'line', label: 'Lower Goal Avg Time', data: lowerData.reverse(), borderColor: 'rgba(59, 130, 246, 1)', yAxisID: 'y', tension: 0.1, fill: false },
+                        { type: 'line', label: 'Long Goal Avg Time', data: longData.reverse(), borderColor: 'rgba(245, 158, 11, 1)', yAxisID: 'y', tension: 0.1, fill: false },
                         { type: 'bar', label: 'Total Frequency', data: frequencyData.reverse(), backgroundColor: 'rgba(209, 213, 219, 0.6)', yAxisID: 'y1' }
                     ]
                 },
